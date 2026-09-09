@@ -169,6 +169,8 @@ pub struct UpdateCommand {
 pub enum ConfigOption {
     BasicAuth,
     Token(Command),
+    #[strum(to_string = "LDAP (form login)")]
+    Ldap,
 }
 
 #[derive(Parser, Debug)]

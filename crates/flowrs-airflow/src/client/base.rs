@@ -53,7 +53,7 @@ impl BaseClient {
             .danger_accept_invalid_certs(config.insecure)
             .build()?;
 
-        let auth_provider = create_auth_provider(&config.auth)?;
+        let auth_provider = create_auth_provider(&config.auth, &endpoint)?;
 
         Ok(Self {
             client,

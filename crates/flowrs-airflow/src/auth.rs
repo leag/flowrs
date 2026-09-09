@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 pub enum AirflowAuth {
     Basic(BasicAuth),
     Token(TokenSource),
+    Ldap(LdapAuth),
     Conveyor,
     Mwaa(MwaaAuth),
     Astronomer(AstronomerAuth),
@@ -21,6 +22,28 @@ pub struct BasicAuth {
 impl std::fmt::Debug for BasicAuth {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("BasicAuth")
+            .field("username", &self.username)
+            .field("password", &"<redacted>")
+            .finish()
+    }
+}
+
+/// Credentials for an LDAP user authenticated through Flask-AppBuilder's
+/// classic login form rather than the `/auth/token` API endpoint.
+///
+/// Some Airflow deployments have LDAP users who cannot obtain a token via
+/// `/auth/token` directly (a known FAB bug: apache/airflow#52103), even
+/// though the web login works. `LdapAuthProvider` replicates the web
+/// login flow to obtain the same JWT.
+#[derive(Deserialize, Serialize, Clone)]
+pub struct LdapAuth {
+    pub username: String,
+    pub password: String,
+}
+
+impl std::fmt::Debug for LdapAuth {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LdapAuth")
             .field("username", &self.username)
             .field("password", &"<redacted>")
             .finish()

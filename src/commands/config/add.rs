@@ -8,7 +8,7 @@ use super::model::AddCommand;
 use crate::commands::config::model::{validate_endpoint, ConfigOption};
 use anyhow::{Context, Result};
 use flowrs_config::{
-    AirflowAuth, AirflowConfig, AirflowVersion, BasicAuth, FlowrsConfig, TokenSource,
+    AirflowAuth, AirflowConfig, AirflowVersion, BasicAuth, FlowrsConfig, LdapAuth, TokenSource,
 };
 
 impl AddCommand {
@@ -71,6 +71,22 @@ impl AddCommand {
                     name,
                     endpoint,
                     auth: AirflowAuth::Token(TokenSource::Command { cmd }),
+                    managed: None,
+                    version,
+                    timeout_secs: 30,
+                    insecure,
+                }
+            }
+            ConfigOption::Ldap => {
+                let username = inquire::Text::new("username").prompt()?;
+                let password = inquire::Password::new("password")
+                    .with_display_toggle_enabled()
+                    .prompt()?;
+
+                AirflowConfig {
+                    name,
+                    endpoint,
+                    auth: AirflowAuth::Ldap(LdapAuth { username, password }),
                     managed: None,
                     version,
                     timeout_secs: 30,

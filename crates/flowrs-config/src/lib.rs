@@ -4,7 +4,8 @@ pub mod theme;
 // Auth and server config types are owned by flowrs-airflow; re-export them at
 // the crate root so callers get one ergonomic import path.
 pub use flowrs_airflow::{
-    AirflowAuth, AirflowConfig, AirflowVersion, BasicAuth, GccConfig, ManagedService, TokenSource,
+    AirflowAuth, AirflowConfig, AirflowVersion, BasicAuth, GccConfig, LdapAuth, ManagedService,
+    TokenSource,
 };
 pub use paths::ConfigPaths;
 pub use theme::Theme;

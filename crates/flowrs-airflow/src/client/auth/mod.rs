@@ -1,17 +1,19 @@
 mod basic;
 mod command;
+mod ldap;
 mod static_token;
 
 use crate::error::Result;
 
 pub use basic::BasicAuthProvider;
 pub use command::CommandTokenProvider;
+pub use ldap::LdapAuthProvider;
 pub use static_token::StaticTokenProvider;
 
 use async_trait::async_trait;
 use reqwest::RequestBuilder;
 
-use crate::auth::{AirflowAuth, BasicAuth, TokenSource};
+use crate::auth::{AirflowAuth, BasicAuth, LdapAuth, TokenSource};
 #[cfg(feature = "astronomer")]
 use crate::managed_services::astronomer::AstronomerAuthProvider;
 #[cfg(feature = "composer")]
@@ -31,7 +33,13 @@ pub trait AuthProvider: Send + Sync {
 }
 
 /// Create an auth provider from an `AirflowAuth` config enum variant.
-pub fn create_auth_provider(auth: &AirflowAuth) -> Result<Box<dyn AuthProvider>> {
+///
+/// `base_url` is the server's endpoint, needed by providers (like `Ldap`)
+/// that must make their own requests to the Airflow deployment itself.
+pub fn create_auth_provider(
+    auth: &AirflowAuth,
+    base_url: &reqwest::Url,
+) -> Result<Box<dyn AuthProvider>> {
     match auth {
         AirflowAuth::Basic(BasicAuth { username, password }) => Ok(Box::new(BasicAuthProvider {
             username: username.clone(),
@@ -43,6 +51,11 @@ pub fn create_auth_provider(auth: &AirflowAuth) -> Result<Box<dyn AuthProvider>>
         AirflowAuth::Token(TokenSource::Command { cmd }) => {
             Ok(Box::new(CommandTokenProvider::new(cmd.clone())))
         }
+        AirflowAuth::Ldap(LdapAuth { username, password }) => Ok(Box::new(LdapAuthProvider::new(
+            base_url.clone(),
+            username.clone(),
+            password.clone(),
+        ))),
         #[cfg(feature = "conveyor")]
         AirflowAuth::Conveyor => Ok(Box::new(ConveyorAuthProvider::new())),
         #[cfg(not(feature = "conveyor"))]
@@ -88,7 +101,7 @@ mod tests {
             username: "user".to_string(),
             password: "pass".to_string(),
         });
-        assert!(create_auth_provider(&auth).is_ok());
+        assert!(create_auth_provider(&auth, &"http://localhost:8080/".parse().unwrap()).is_ok());
     }
 
     #[test]
@@ -96,7 +109,7 @@ mod tests {
         let auth = AirflowAuth::Token(TokenSource::Static {
             token: "tok".to_string(),
         });
-        assert!(create_auth_provider(&auth).is_ok());
+        assert!(create_auth_provider(&auth, &"http://localhost:8080/".parse().unwrap()).is_ok());
     }
 
     #[test]
@@ -104,6 +117,6 @@ mod tests {
         let auth = AirflowAuth::Token(TokenSource::Command {
             cmd: "echo hi".to_string(),
         });
-        assert!(create_auth_provider(&auth).is_ok());
+        assert!(create_auth_provider(&auth, &"http://localhost:8080/".parse().unwrap()).is_ok());
     }
 }

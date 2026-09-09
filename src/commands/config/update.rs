@@ -6,7 +6,7 @@ use strum::IntoEnumIterator;
 
 use super::model::UpdateCommand;
 use crate::commands::config::model::{validate_endpoint, ConfigOption};
-use flowrs_config::{AirflowAuth, AirflowConfig, BasicAuth, FlowrsConfig, TokenSource};
+use flowrs_config::{AirflowAuth, AirflowConfig, BasicAuth, FlowrsConfig, LdapAuth, TokenSource};
 
 use anyhow::{anyhow, Context, Result};
 
@@ -77,6 +77,14 @@ impl UpdateCommand {
                 // Validate the command produces a token
                 let _token = String::from_utf8(output.stdout)?;
                 airflow_config.auth = AirflowAuth::Token(TokenSource::Command { cmd });
+            }
+            ConfigOption::Ldap => {
+                let username = inquire::Text::new("username").prompt()?;
+                let password = inquire::Password::new("password")
+                    .with_display_toggle_enabled()
+                    .prompt()?;
+
+                airflow_config.auth = AirflowAuth::Ldap(LdapAuth { username, password });
             }
         }
 
