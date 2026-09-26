@@ -64,14 +64,24 @@ impl EnvironmentData {
         self.dags = dags;
     }
 
-    /// Replace stats for a single DAG.
-    pub fn update_dag_stats(&mut self, dag_id: &DagId, stats: Vec<DagStatistic>) {
+    /// Replace stats for a single DAG. Returns `true` if the stats differ from
+    /// the cached ones, i.e. a run started or finished since the last refresh.
+    pub fn update_dag_stats(&mut self, dag_id: &DagId, stats: Vec<DagStatistic>) -> bool {
+        if self.dag_stats.get(dag_id) == Some(&stats) {
+            return false;
+        }
         self.dag_stats.insert(dag_id.clone(), stats);
+        true
     }
 
-    /// Replace the latest-run state map for all DAGs.
-    pub fn replace_latest_run_states(&mut self, states: HashMap<DagId, DagRunState>) {
-        self.latest_run_states = Arc::new(states);
+    /// Merge freshly looked-up latest-run states into the cached map.
+    pub fn merge_latest_run_states(&mut self, states: HashMap<DagId, DagRunState>) {
+        if states.is_empty() {
+            return;
+        }
+        let mut merged = HashMap::clone(&self.latest_run_states);
+        merged.extend(states);
+        self.latest_run_states = Arc::new(merged);
     }
 
     /// Replace all DAG runs for a DAG (evicts deleted runs).

@@ -60,15 +60,21 @@ pub async fn handle_update_dags_and_stats(
         },
         async {
             let result = client.get_dag_stats(refs).await;
-            let mut app = app.lock().unwrap();
-            apply_dag_stats(&mut app, env_name, result);
-            sync_dag_panel(&mut app, env_name);
-        },
-        async {
-            let result = client.list_latest_dagrun_states(&dag_ids).await;
-            let mut app = app.lock().unwrap();
-            apply_latest_run_states(&mut app, env_name, result);
-            sync_dag_panel(&mut app, env_name);
+            let changed = {
+                let mut app = app.lock().unwrap();
+                let changed = apply_dag_stats(&mut app, env_name, result);
+                sync_dag_panel(&mut app, env_name);
+                changed
+            };
+            // A DAG's latest run can only change when a run starts or finishes,
+            // which always moves its per-state counts. Only then is the (paged,
+            // comparatively expensive) latest-run lookup worth repeating.
+            if !changed.is_empty() {
+                let result = client.list_latest_dagrun_states(&changed).await;
+                let mut app = app.lock().unwrap();
+                apply_latest_run_states(&mut app, env_name, changed, result);
+                sync_dag_panel(&mut app, env_name);
+            }
         },
     );
 }
@@ -99,28 +105,47 @@ async fn fetch_and_apply_dag_list(
     ids
 }
 
-fn apply_dag_stats(app: &mut App, env_name: &str, result: anyhow::Result<DagStatsResponse>) {
+/// Store fetched stats and return the IDs of DAGs whose stats changed, plus
+/// any DAG that has stats but no known latest-run state yet (cold start).
+fn apply_dag_stats(
+    app: &mut App,
+    env_name: &str,
+    result: anyhow::Result<DagStatsResponse>,
+) -> Vec<DagId> {
+    let mut changed = Vec::new();
     match result {
         Ok(dag_stats) => {
             if let Some(env) = app.environment_state.environments.get_mut(env_name) {
                 for dag_stats in dag_stats.dags {
-                    env.update_dag_stats(&DagId::from(dag_stats.dag_id.clone()), dag_stats.stats);
+                    let dag_id = DagId::from(dag_stats.dag_id);
+                    let stats_changed = env.update_dag_stats(&dag_id, dag_stats.stats);
+                    if stats_changed || !env.latest_run_states.contains_key(&dag_id) {
+                        changed.push(dag_id);
+                    }
                 }
             }
         }
         Err(e) => log::error!("Failed to fetch dag stats: {e}"),
     }
+    changed
 }
 
+/// Merge looked-up states for `requested` DAGs. DAGs the lookup did not
+/// resolve (no runs, or outside the page budget) are recorded as `Unknown` so
+/// they are not re-queried until their stats change again.
 fn apply_latest_run_states(
     app: &mut App,
     env_name: &str,
+    requested: Vec<DagId>,
     result: anyhow::Result<HashMap<DagId, DagRunState>>,
 ) {
     match result {
-        Ok(states) => {
+        Ok(mut states) => {
+            for dag_id in requested {
+                states.entry(dag_id).or_insert(DagRunState::Unknown);
+            }
             if let Some(env) = app.environment_state.environments.get_mut(env_name) {
-                env.replace_latest_run_states(states);
+                env.merge_latest_run_states(states);
             }
         }
         Err(e) => log::error!("Failed to fetch latest dag run states: {e}"),

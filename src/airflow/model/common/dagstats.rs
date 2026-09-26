@@ -15,7 +15,7 @@ pub struct DagStatistics {
     pub stats: Vec<DagStatistic>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DagStatistic {
     pub state: DagRunState,
     pub count: u64,
