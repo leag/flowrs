@@ -6,7 +6,8 @@ use super::V1Client;
 use crate::client::read_json;
 use crate::error::Result;
 
-const PAGE_SIZE: usize = 50;
+/// Airflow's default `maximum_page_limit`; larger values are clamped anyway.
+const PAGE_SIZE: usize = 100;
 
 impl V1Client {
     pub async fn fetch_dags(&self) -> Result<DagCollectionResponse> {
