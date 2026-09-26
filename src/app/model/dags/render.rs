@@ -1,10 +1,10 @@
 use ratatui::layout::{Constraint, Rect};
-use ratatui::style::{Modifier, Style};
+use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Row, StatefulWidget, Table, Widget};
 use time::OffsetDateTime;
 
-use crate::airflow::model::common::DagRunState;
+use crate::airflow::model::common::{Dag, DagRunState};
 use crate::ui::common::create_headers;
 use crate::ui::constants::AirflowStateColor;
 use crate::ui::theme::theme;
@@ -26,11 +26,10 @@ impl Widget for &mut DagModel {
             .enumerate()
             .map(|(idx, item)| {
                 Row::new(vec![
-                    if item.is_paused {
-                        Line::from(Span::styled("𖣘", Style::default().fg(theme.text_primary)))
-                    } else {
-                        Line::from(Span::styled("𖣘", Style::default().fg(theme.dag_active)))
-                    },
+                    Line::from(Span::styled(
+                        "𖣘",
+                        Style::default().fg(self.active_indicator_color(item)),
+                    )),
                     Line::from(Span::styled(
                         item.dag_id.to_string(),
                         Style::default().add_modifier(Modifier::BOLD),
@@ -108,6 +107,25 @@ impl Widget for &mut DagModel {
         // Render custom popups that need special handling
         if let Some(DagPopUp::Trigger(trigger_popup)) = self.popup.custom_mut() {
             trigger_popup.render(area, buf);
+        }
+    }
+}
+
+impl DagModel {
+    /// Color of the active-indicator pinwheel: muted when paused, the theme's `dag_failed` color when
+    /// the most recent run failed, active-blue otherwise.
+    fn active_indicator_color(&self, dag: &Dag) -> Color {
+        let theme = theme();
+        if dag.is_paused {
+            theme.text_primary
+        } else if self
+            .latest_run_states
+            .get(&dag.dag_id)
+            .is_some_and(|state| *state == DagRunState::Failed)
+        {
+            theme.dag_failed
+        } else {
+            theme.dag_active
         }
     }
 }

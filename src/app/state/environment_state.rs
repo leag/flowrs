@@ -3,7 +3,8 @@ use std::sync::Arc;
 
 use crate::airflow::client::FlowrsClient;
 use crate::airflow::model::common::{
-    Dag, DagId, DagRun, DagRunId, DagStatistic, EnvironmentKey, Log, TaskId, TaskInstance,
+    Dag, DagId, DagRun, DagRunId, DagRunState, DagStatistic, EnvironmentKey, Log, TaskId,
+    TaskInstance,
 };
 
 /// Flat, request-keyed cache for a single Airflow environment.
@@ -21,6 +22,10 @@ pub struct EnvironmentData {
 
     /// Result of `get_dag_stats(dag_ids)` — keyed per DAG.
     pub dag_stats: HashMap<DagId, Vec<DagStatistic>>,
+
+    /// Result of `list_latest_dagrun_states(dag_ids)` — state of the newest run per DAG.
+    /// `Arc` so per-sync copies into the panel model are pointer bumps.
+    pub latest_run_states: Arc<HashMap<DagId, DagRunState>>,
 
     /// Result of `list_dagruns(dag_id)` — keyed by `dag_id`.
     pub dag_runs: HashMap<DagId, Vec<DagRun>>,
@@ -43,6 +48,7 @@ impl EnvironmentData {
             client,
             dags: Vec::new(),
             dag_stats: HashMap::new(),
+            latest_run_states: Arc::default(),
             dag_runs: HashMap::new(),
             task_instances: HashMap::new(),
             task_logs: HashMap::new(),
@@ -61,6 +67,11 @@ impl EnvironmentData {
     /// Replace stats for a single DAG.
     pub fn update_dag_stats(&mut self, dag_id: &DagId, stats: Vec<DagStatistic>) {
         self.dag_stats.insert(dag_id.clone(), stats);
+    }
+
+    /// Replace the latest-run state map for all DAGs.
+    pub fn replace_latest_run_states(&mut self, states: HashMap<DagId, DagRunState>) {
+        self.latest_run_states = Arc::new(states);
     }
 
     /// Replace all DAG runs for a DAG (evicts deleted runs).
@@ -137,6 +148,13 @@ impl EnvironmentStateContainer {
     pub fn get_active_dag_stats(&self) -> HashMap<DagId, Vec<DagStatistic>> {
         self.get_active_environment()
             .map(|env| env.dag_stats.clone())
+            .unwrap_or_default()
+    }
+
+    /// Get the latest-run state per DAG for the active environment.
+    pub fn get_active_latest_run_states(&self) -> Arc<HashMap<DagId, DagRunState>> {
+        self.get_active_environment()
+            .map(|env| Arc::clone(&env.latest_run_states))
             .unwrap_or_default()
     }
 

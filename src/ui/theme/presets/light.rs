@@ -23,6 +23,7 @@ impl Theme {
             alt_row_bg: Color::Rgb(245, 245, 250),              // #F5F5FA
             schedule_fg: Color::Rgb(160, 120, 0),               // dark gold
             dag_active: Color::Rgb(30, 144, 255),               // #1E90FF
+            dag_failed: Color::Rgb(255, 107, 107),              // #FF6B6B
             border_selected: Color::Rgb(0, 140, 100),           // accent
             state_success: Color::Rgb(0, 153, 0),               // #009900
             state_failed: Color::Rgb(255, 107, 107),            // #FF6B6B

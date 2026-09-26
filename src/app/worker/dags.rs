@@ -1,9 +1,10 @@
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use log::warn;
 
 use crate::airflow::client::FlowrsClient;
-use crate::airflow::model::common::DagId;
+use crate::airflow::model::common::{DagId, DagRunState, DagStatsResponse};
 use crate::app::model::dagruns::popup::trigger::TriggerDagRunPopUp;
 use crate::app::model::dagruns::popup::DagRunPopUp;
 use crate::app::model::dagruns::DagCodeView;
@@ -55,30 +56,16 @@ pub async fn handle_update_dags_and_stats(
         };
 
         if !dag_ids.is_empty() {
-            let refs: Vec<&str> = dag_ids.iter().map(AsRef::as_ref).collect();
-            match client.get_dag_stats(refs).await {
-                Ok(dag_stats) => {
-                    let mut app = app.lock().unwrap();
-                    if let Some(env) = app.environment_state.environments.get_mut(env_name) {
-                        for dag_stats in dag_stats.dags {
-                            env.update_dag_stats(
-                                &DagId::from(dag_stats.dag_id.clone()),
-                                dag_stats.stats,
-                            );
-                        }
-                    }
-                }
-                Err(e) => {
-                    log::error!("Failed to fetch dag stats: {e}");
-                }
-            }
+            let summaries = fetch_dag_summaries(client, &dag_ids).await;
+            let mut app = app.lock().unwrap();
+            apply_dag_summaries(&mut app, env_name, summaries);
         }
     } else {
         // Warm cache: fetch DAG list and stats concurrently using cached IDs
-        let (dag_list_result, dag_stats_result) = tokio::join!(client.list_dags(), async {
-            let refs: Vec<&str> = cached_dag_ids.iter().map(AsRef::as_ref).collect();
-            client.get_dag_stats(refs).await
-        });
+        let (dag_list_result, summaries) = tokio::join!(
+            client.list_dags(),
+            fetch_dag_summaries(client, &cached_dag_ids)
+        );
 
         let mut app = app.lock().unwrap();
 
@@ -93,21 +80,7 @@ pub async fn handle_update_dags_and_stats(
             }
         }
 
-        match dag_stats_result {
-            Ok(dag_stats) => {
-                if let Some(env) = app.environment_state.environments.get_mut(env_name) {
-                    for dag_stats in dag_stats.dags {
-                        env.update_dag_stats(
-                            &DagId::from(dag_stats.dag_id.clone()),
-                            dag_stats.stats,
-                        );
-                    }
-                }
-            }
-            Err(e) => {
-                log::error!("Failed to fetch dag stats: {e}");
-            }
-        }
+        apply_dag_summaries(&mut app, env_name, summaries);
     }
 
     // Only sync panel data if this environment is still the active one,
@@ -115,6 +88,41 @@ pub async fn handle_update_dags_and_stats(
     let mut app = app.lock().unwrap();
     if app.environment_state.active_environment.as_deref() == Some(env_name) {
         app.sync_panel(&crate::app::state::Panel::Dag);
+    }
+}
+
+/// Per-DAG summary data fetched alongside the DAG list: run-state counts and
+/// the state of the most recent run.
+type DagSummaries = (
+    anyhow::Result<DagStatsResponse>,
+    anyhow::Result<HashMap<DagId, DagRunState>>,
+);
+
+/// Fetch stats and latest-run states for `dag_ids` concurrently.
+async fn fetch_dag_summaries(client: &FlowrsClient, dag_ids: &[DagId]) -> DagSummaries {
+    let refs: Vec<&str> = dag_ids.iter().map(AsRef::as_ref).collect();
+    tokio::join!(
+        client.get_dag_stats(refs),
+        client.list_latest_dagrun_states(dag_ids)
+    )
+}
+
+/// Write fetched summaries into the environment; failures are logged, not shown.
+fn apply_dag_summaries(app: &mut App, env_name: &str, (stats_result, latest_result): DagSummaries) {
+    let Some(env) = app.environment_state.environments.get_mut(env_name) else {
+        return;
+    };
+    match stats_result {
+        Ok(dag_stats) => {
+            for dag_stats in dag_stats.dags {
+                env.update_dag_stats(&DagId::from(dag_stats.dag_id.clone()), dag_stats.stats);
+            }
+        }
+        Err(e) => log::error!("Failed to fetch dag stats: {e}"),
+    }
+    match latest_result {
+        Ok(states) => env.replace_latest_run_states(states),
+        Err(e) => log::error!("Failed to fetch latest dag run states: {e}"),
     }
 }
 

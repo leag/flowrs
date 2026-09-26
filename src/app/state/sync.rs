@@ -17,6 +17,7 @@ impl App {
                     .table
                     .set_items(self.environment_state.get_active_dags());
                 self.dags.dag_stats = self.environment_state.get_active_dag_stats();
+                self.dags.latest_run_states = self.environment_state.get_active_latest_run_states();
                 let dag_ids: Vec<String> = self
                     .dags
                     .table

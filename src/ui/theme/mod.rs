@@ -38,6 +38,7 @@ pub struct Theme {
     pub marked_bg: Color,
     pub alt_row_bg: Color,
     pub dag_active: Color,
+    pub dag_failed: Color,
     pub schedule_fg: Color,
     pub state_success: Color,
     pub state_failed: Color,

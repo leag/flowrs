@@ -3,11 +3,12 @@ pub mod popup;
 mod render;
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use crossterm::event::KeyCode;
 use log::debug;
 
-use crate::airflow::model::common::{Dag, DagId, DagStatistic};
+use crate::airflow::model::common::{Dag, DagId, DagRunState, DagStatistic};
 use crate::app::events::custom::FlowrsEvent;
 use commands::DAG_COMMAND_POP_UP;
 
@@ -24,6 +25,8 @@ pub struct DagModel {
     pub table: FilterableTable<Dag>,
     /// DAG statistics by `dag_id`
     pub dag_stats: HashMap<DagId, Vec<DagStatistic>>,
+    /// State of the most recent run by `dag_id`
+    pub latest_run_states: Arc<HashMap<DagId, DagRunState>>,
     /// Unified popup state (error, commands, or custom for this model)
     pub popup: Popup<DagPopUp>,
     /// DAG source code viewer
@@ -38,6 +41,7 @@ impl Default for DagModel {
         Self {
             table: FilterableTable::new(),
             dag_stats: HashMap::new(),
+            latest_run_states: Arc::default(),
             popup: Popup::None,
             dag_code: None,
             ticks: 0,

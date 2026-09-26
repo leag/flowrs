@@ -16,6 +16,21 @@ impl V2Client {
         read_json(response, "DAG runs response").await
     }
 
+    /// Fetch the most recent DAG runs across all DAGs, newest first.
+    pub async fn fetch_recent_dagruns(
+        &self,
+        limit: usize,
+        offset: usize,
+    ) -> Result<model::dagrun::DagRunList> {
+        let request = self.base_api(Method::GET, "dags/~/dagRuns").await?.query(&[
+            ("order_by", "-run_after"),
+            ("limit", &limit.to_string()),
+            ("offset", &offset.to_string()),
+        ]);
+        let response = self.execute(request).await?;
+        read_json(response, "recent DAG runs response").await
+    }
+
     pub async fn patch_dag_run(&self, dag_id: &str, dag_run_id: &str, status: &str) -> Result<()> {
         let request = self
             .base_api(
