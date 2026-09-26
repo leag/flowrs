@@ -7,7 +7,7 @@ use super::duration::TimeBounded;
 use super::{DagId, DagRunId};
 
 /// State of a DAG run as reported by the Airflow API.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DagRunState {
     Success,

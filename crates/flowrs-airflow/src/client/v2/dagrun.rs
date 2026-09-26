@@ -16,19 +16,35 @@ impl V2Client {
         read_json(response, "DAG runs response").await
     }
 
-    /// Fetch the most recent DAG runs across all DAGs, newest first.
-    pub async fn fetch_recent_dagruns(
+    /// Fetch one page of runs for the given DAGs, newest first, via the
+    /// batch list endpoint so the page only contains runs of those DAGs.
+    pub async fn fetch_dagruns_batch(
         &self,
-        limit: usize,
-        offset: usize,
+        dag_ids: &[&str],
+        page_limit: usize,
+        page_offset: usize,
     ) -> Result<model::dagrun::DagRunList> {
-        let request = self.base_api(Method::GET, "dags/~/dagRuns").await?.query(&[
-            ("order_by", "-run_after"),
-            ("limit", &limit.to_string()),
-            ("offset", &offset.to_string()),
-        ]);
+        let request = self
+            .base_api(Method::POST, "dags/~/dagRuns/list")
+            .await?
+            .json(&serde_json::json!({
+                "dag_ids": dag_ids,
+                "order_by": "-run_after",
+                "page_limit": page_limit,
+                "page_offset": page_offset,
+            }));
         let response = self.execute(request).await?;
-        read_json(response, "recent DAG runs response").await
+        read_json(response, "DAG runs batch response").await
+    }
+
+    /// Fetch only the newest run of a single DAG.
+    pub async fn fetch_latest_dagrun(&self, dag_id: &str) -> Result<model::dagrun::DagRunList> {
+        let request = self
+            .base_api(Method::GET, &format!("dags/{dag_id}/dagRuns"))
+            .await?
+            .query(&[("order_by", "-run_after"), ("limit", "1")]);
+        let response = self.execute(request).await?;
+        read_json(response, "latest DAG run response").await
     }
 
     pub async fn patch_dag_run(&self, dag_id: &str, dag_run_id: &str, status: &str) -> Result<()> {

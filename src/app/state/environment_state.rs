@@ -58,30 +58,46 @@ impl EnvironmentData {
 
     // ── Write methods (called by workers after API responses) ────────
 
-    /// Replace the full DAG list (evicts deleted DAGs).
-    pub fn replace_dags(&mut self, mut dags: Vec<Dag>) {
+    /// Replace the full DAG list (evicts deleted DAGs). Returns `true` if the
+    /// list differs from the cached one.
+    pub fn replace_dags(&mut self, mut dags: Vec<Dag>) -> bool {
         dags.sort_by(|a, b| a.dag_id.cmp(&b.dag_id));
+        if self.dags == dags {
+            return false;
+        }
         self.dags = dags;
+        true
     }
 
     /// Replace stats for a single DAG. Returns `true` if the stats differ from
     /// the cached ones, i.e. a run started or finished since the last refresh.
     pub fn update_dag_stats(&mut self, dag_id: &DagId, stats: Vec<DagStatistic>) -> bool {
-        if self.dag_stats.get(dag_id) == Some(&stats) {
+        // Compare as state → count so the API's array order doesn't matter.
+        fn counts(stats: &[DagStatistic]) -> HashMap<&DagRunState, u64> {
+            stats.iter().map(|s| (&s.state, s.count)).collect()
+        }
+        if self
+            .dag_stats
+            .get(dag_id)
+            .is_some_and(|cached| counts(cached) == counts(&stats))
+        {
             return false;
         }
         self.dag_stats.insert(dag_id.clone(), stats);
         true
     }
 
-    /// Merge freshly looked-up latest-run states into the cached map.
-    pub fn merge_latest_run_states(&mut self, states: HashMap<DagId, DagRunState>) {
-        if states.is_empty() {
-            return;
+    /// Merge freshly looked-up latest-run states into the cached map. Returns
+    /// `true` if any state changed. `Arc::make_mut` only copies the map while
+    /// the panel still holds the previous version.
+    pub fn merge_latest_run_states(&mut self, states: HashMap<DagId, DagRunState>) -> bool {
+        let changed = states
+            .iter()
+            .any(|(id, state)| self.latest_run_states.get(id) != Some(state));
+        if changed {
+            Arc::make_mut(&mut self.latest_run_states).extend(states);
         }
-        let mut merged = HashMap::clone(&self.latest_run_states);
-        merged.extend(states);
-        self.latest_run_states = Arc::new(merged);
+        changed
     }
 
     /// Replace all DAG runs for a DAG (evicts deleted runs).
