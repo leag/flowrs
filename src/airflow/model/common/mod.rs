@@ -18,7 +18,7 @@ pub use dagrun::{DagRun, DagRunList, DagRunState, RunType};
 pub use dagstats::{DagStatistic, DagStatsResponse};
 pub use duration::{calculate_duration, format_duration};
 pub use gantt::{GanttData, TaskTryGantt};
-pub use log::Log;
+pub use log::{Log, LogSource};
 pub use open_item::OpenItem;
 pub use task::{Task, TaskList};
 pub use taskinstance::{TaskInstance, TaskInstanceList, TaskInstanceState};

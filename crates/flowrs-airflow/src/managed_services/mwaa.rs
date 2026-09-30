@@ -250,6 +250,7 @@ pub async fn get_mwaa_environment_servers() -> Result<Vec<AirflowConfig>> {
             version,
             timeout_secs: 30,
             insecure: false,
+            grafana: None,
         });
     }
 

@@ -2,7 +2,7 @@ use crate::airflow::model::common::dagrun::{DagRunState, RunType};
 use crate::airflow::model::common::dagstats::{DagStatistic, DagStatistics};
 use crate::airflow::model::common::taskinstance::TaskInstanceState;
 use crate::airflow::model::common::{
-    Dag, DagList, DagRun, DagRunList, DagStatsResponse, Log, Tag, Task, TaskInstance,
+    Dag, DagList, DagRun, DagRunList, DagStatsResponse, Log, LogSource, Tag, Task, TaskInstance,
     TaskInstanceList, TaskList, TaskTryGantt,
 };
 
@@ -149,9 +149,15 @@ pub(crate) fn v2_task_collection_to_list(
 }
 
 pub(crate) fn v2_log_to_log(value: flowrs_airflow::client::v2::model::log::Log) -> Log {
+    let source = if value.content.has_task_output() {
+        LogSource::Airflow
+    } else {
+        LogSource::AirflowUnavailable
+    };
     Log {
         continuation_token: value.continuation_token,
         content: value.content.to_string(),
+        source,
     }
 }
 

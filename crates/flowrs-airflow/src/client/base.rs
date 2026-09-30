@@ -6,6 +6,7 @@ use std::time::Duration;
 use super::auth::{create_auth_provider, AuthProvider};
 use crate::config::AirflowConfig;
 use crate::error::{AirflowError, Result, SNIPPET_LEN};
+use crate::loki::LokiClient;
 
 /// Base HTTP client for Airflow API communication.
 /// Handles authentication and provides base request building functionality.
@@ -16,6 +17,7 @@ pub struct BaseClient {
     /// when the client is created rather than on every request.
     endpoint: Url,
     auth_provider: Box<dyn AuthProvider>,
+    loki: Option<LokiClient>,
 }
 
 impl fmt::Debug for BaseClient {
@@ -25,6 +27,7 @@ impl fmt::Debug for BaseClient {
             .field("config", &self.config)
             .field("endpoint", &self.endpoint)
             .field("auth_provider", &"<AuthProvider>")
+            .field("loki", &self.loki)
             .finish()
     }
 }
@@ -55,11 +58,18 @@ impl BaseClient {
 
         let auth_provider = create_auth_provider(&config.auth, &endpoint)?;
 
+        let loki = config
+            .grafana
+            .clone()
+            .map(|grafana| LokiClient::new(grafana, config.timeout_secs, config.insecure))
+            .transpose()?;
+
         Ok(Self {
             client,
             config,
             endpoint,
             auth_provider,
+            loki,
         })
     }
 
@@ -70,6 +80,11 @@ impl BaseClient {
 
     pub const fn config(&self) -> &AirflowConfig {
         &self.config
+    }
+
+    /// The Loki client for this server, when a `grafana` section is configured.
+    pub const fn loki(&self) -> Option<&LokiClient> {
+        self.loki.as_ref()
     }
 
     /// Build a base request with authentication for the specified API version
@@ -154,6 +169,7 @@ mod tests {
             version: crate::config::AirflowVersion::V3,
             timeout_secs: crate::config::default_timeout(),
             insecure: false,
+            grafana: None,
         }
     }
 

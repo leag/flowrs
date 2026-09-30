@@ -72,6 +72,7 @@ pub fn create_test_client() -> anyhow::Result<Arc<FlowrsClient>> {
         version,
         timeout_secs: 30,
         insecure: false,
+        grafana: None,
     };
 
     let client = FlowrsClient::new(&config)?;
@@ -95,6 +96,7 @@ pub async fn create_test_client_v3() -> anyhow::Result<Arc<FlowrsClient>> {
         version: AirflowVersion::V3,
         timeout_secs: 30,
         insecure: false,
+        grafana: None,
     };
 
     let client = FlowrsClient::new(&config)?;

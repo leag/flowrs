@@ -2,6 +2,7 @@ pub mod auth;
 pub mod client;
 pub mod config;
 pub mod error;
+pub mod loki;
 pub mod managed_services;
 
 pub use auth::{
@@ -9,5 +10,5 @@ pub use auth::{
     TokenSource,
 };
 pub use client::{BaseClient, V1Client, V2Client};
-pub use config::{AirflowConfig, AirflowVersion, GccConfig, ManagedService};
+pub use config::{AirflowConfig, AirflowVersion, GccConfig, GrafanaConfig, ManagedService};
 pub use error::{AirflowError, Result};

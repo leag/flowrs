@@ -39,4 +39,9 @@ impl V2Client {
     pub const fn endpoint(&self) -> &Url {
         self.base.endpoint()
     }
+
+    /// The Loki client for this server, when a `grafana` section is configured.
+    pub const fn loki(&self) -> Option<&crate::loki::LokiClient> {
+        self.base.loki()
+    }
 }

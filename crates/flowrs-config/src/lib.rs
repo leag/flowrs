@@ -238,6 +238,7 @@ password = "airflow"
                 version: AirflowVersion::V2,
                 timeout_secs: default_timeout(),
                 insecure: false,
+                grafana: None,
             }],
             managed_services: vec![ManagedService::Conveyor],
             active_server: None,
@@ -249,6 +250,34 @@ password = "airflow"
 
         let serialized_config = config.to_str().unwrap();
         assert_eq!(serialized_config.trim(), TEST_CONFIG_CONVEYOR.trim());
+    }
+
+    #[test]
+    fn parses_a_grafana_section_with_defaults() {
+        let toml = r#"
+[[servers]]
+name = "prod"
+endpoint = "https://airflow.example.com"
+version = "V3"
+
+[servers.auth.Basic]
+username = "airflow"
+password = "airflow"
+
+[servers.grafana]
+url = "https://grafana.example.com"
+loki_datasource_uid = "abcd1234"
+token = "$GRAFANA_TOKEN"
+"#;
+        let config = FlowrsConfig::parse_toml(toml).unwrap();
+        let grafana = config.servers[0].grafana.as_ref().unwrap();
+        assert_eq!(grafana.loki_datasource_uid, "abcd1234");
+        assert_eq!(grafana.token.as_deref(), Some("$GRAFANA_TOKEN"));
+        assert_eq!(grafana.exclude_containers, ["vault-agent-init"]);
+        assert_eq!(grafana.max_lines, 20_000);
+        assert!(grafana.exclude_lines.is_none());
+        // Secrets never reach debug output (and so the debug log).
+        assert!(!format!("{grafana:?}").contains("GRAFANA_TOKEN"));
     }
 
     #[test]
@@ -319,6 +348,7 @@ password = "airflow"
             version: AirflowVersion::V2,
             timeout_secs: flowrs_airflow::config::default_timeout(),
             insecure: false,
+            grafana: None,
         }
     }
 

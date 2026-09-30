@@ -326,6 +326,7 @@ pub async fn get_composer_environment_servers(
                 version,
                 timeout_secs: 30,
                 insecure: false,
+                grafana: None,
             });
         }
     }

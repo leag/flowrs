@@ -62,6 +62,35 @@ This creates an entry in your configuration file at `$XDG_CONFIG_HOME/flowrs/con
 
 Flowrs supports authenticating with HTTP Basic Auth or using bearer tokens. When selecting the bearer token option, you can either provide a static token or a command that generates a token.
 
+### Task logs from Loki
+
+With the Kubernetes executor, Airflow reads a try's log from the pod that ran it. Once the pod is gone (it finished, was evicted, or its spot node was reclaimed), Airflow can only report where it looked. If your cluster ships pod output to Loki, flowrs can read the log from there instead, through Grafana's datasource proxy. Add a `grafana` section to the server in your configuration file:
+
+```toml
+[[servers]]
+name = "prod"
+endpoint = "https://airflow.example.com"
+version = "V3"
+
+[servers.auth.Basic]
+username = "airflow"
+password = "airflow"
+
+[servers.grafana]
+url = "https://grafana.example.com"
+loki_datasource_uid = "abcd1234"
+# Basic auth, or `token = "$GRAFANA_TOKEN"` for a service-account token.
+# Grafana credentials written as `$NAME` or `${NAME}` are read from the environment.
+username = "$GRAFANA_USERNAME"
+password = "$GRAFANA_PASSWORD"
+# Optional:
+exclude_containers = ["vault-agent-init"]      # default
+exclude_lines = "Requirement already satisfied|pip install"
+max_lines = 20000                               # default
+```
+
+When Airflow returns only its "Log message source details" (or fails), the logs panel shows the Loki log instead, labelled `Task N · Loki`, with the pod and node it ran on. Press `L` in the logs panel to read from Loki even when Airflow still has the log. Loki is searched by the `dag_id`, `task_id` and `try_number` pod labels within the try's start and end time (2 minutes before to 5 minutes after); the `run_id` label is not used, because Kubernetes rewrites it. If a finished try has no `Task finished` event, flowrs points out that the pod stopped mid-run.
+
 ### Themes
 
 Flowrs ships with six themes, including four [Catppuccin](https://github.com/catppuccin/catppuccin) flavors. The active theme is configured with `flowrs config --theme <theme>`:

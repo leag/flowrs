@@ -61,6 +61,10 @@ pub struct LogModel {
     pub(crate) vertical_scroll_state: ScrollbarState,
     pending_g: bool,
     pub(crate) search: Search,
+    /// Read logs from Loki even when Airflow can serve them (toggled with `L`).
+    pub force_loki: bool,
+    /// Whether the active server has a `grafana` section; set by the worker.
+    pub loki_available: bool,
 }
 
 impl Default for LogModel {
@@ -76,6 +80,8 @@ impl Default for LogModel {
             vertical_scroll_state: ScrollbarState::default(),
             pending_g: false,
             search: Search::default(),
+            force_loki: false,
+            loki_available: false,
         }
     }
 }
@@ -283,6 +289,25 @@ impl Model for LogModel {
                             }
                         }
                     }
+                    KeyCode::Char('L') if self.loki_available => {
+                        self.force_loki = !self.force_loki;
+                        if let (Some(dag_id), Some(dag_run_id), Some(task_id), Some(task_try)) = (
+                            ctx.dag_id(),
+                            ctx.dag_run_id(),
+                            ctx.task_id(),
+                            ctx.task_try(),
+                        ) {
+                            return (
+                                None,
+                                vec![WorkerMessage::UpdateTaskLogs {
+                                    dag_id: dag_id.clone(),
+                                    dag_run_id: dag_run_id.clone(),
+                                    task_id: task_id.clone(),
+                                    task_try,
+                                }],
+                            );
+                        }
+                    }
                     KeyCode::Char('G') => {
                         self.scroll_mode = ScrollMode::Following;
                     }
@@ -325,6 +350,7 @@ mod tests {
 
     use super::search::SearchMatch;
     use super::*;
+    use crate::airflow::model::common::LogSource;
 
     fn model_with_logs(contents: &[&str]) -> LogModel {
         let mut model = LogModel::default();
@@ -334,6 +360,7 @@ mod tests {
                 .map(|content| Log {
                     continuation_token: None,
                     content: (*content).to_string(),
+                    source: LogSource::Airflow,
                 })
                 .collect(),
         );
@@ -446,6 +473,7 @@ mod tests {
         model.update_logs(vec![Log {
             continuation_token: None,
             content: "error\nnew line with error".to_string(),
+            source: LogSource::Airflow,
         }]);
         assert_eq!(model.search.data().unwrap().matches.len(), 2);
     }
@@ -475,7 +503,42 @@ mod tests {
         Log {
             continuation_token: None,
             content: content.to_string(),
+            source: LogSource::Airflow,
         }
+    }
+
+    fn task_ctx() -> NavigationContext {
+        NavigationContext::Task {
+            environment: "env".to_string(),
+            dag_id: "dag".into(),
+            dag_run_id: "run".into(),
+            task_id: "task".into(),
+            task_try: 2,
+        }
+    }
+
+    #[test]
+    fn l_toggles_loki_and_refetches_when_available() {
+        let mut model = model_with_logs(&["a"]);
+        let key = FlowrsEvent::Key(KeyEvent::new(KeyCode::Char('L'), KeyModifiers::SHIFT));
+
+        // Without a grafana section the key falls through and nothing changes.
+        let (fall_through, messages) = model.update(&key, &task_ctx());
+        assert!(fall_through.is_some());
+        assert!(messages.is_empty());
+        assert!(!model.force_loki);
+
+        model.loki_available = true;
+        let (fall_through, messages) = model.update(&key, &task_ctx());
+        assert!(fall_through.is_none());
+        assert!(model.force_loki);
+        assert!(matches!(
+            messages.as_slice(),
+            [WorkerMessage::UpdateTaskLogs { task_try: 2, .. }]
+        ));
+
+        model.update(&key, &task_ctx());
+        assert!(!model.force_loki);
     }
 
     /// Regression test: pressing `o` to open the Airflow UI while the log list

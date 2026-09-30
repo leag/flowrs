@@ -37,8 +37,17 @@ impl Widget for &mut LogModel {
             return;
         }
 
-        let tab_titles = (0..self.all.len())
-            .map(|i| format!("Task {}", i + 1))
+        let tab_titles = self
+            .all
+            .iter()
+            .enumerate()
+            .map(|(i, log)| {
+                if log.source.is_loki() {
+                    format!("Task {} · Loki", i + 1)
+                } else {
+                    format!("Task {}", i + 1)
+                }
+            })
             .collect::<Vec<String>>();
 
         let tabs = Tabs::new(tab_titles)
@@ -75,6 +84,7 @@ impl Widget for &mut LogModel {
         if let Some(log) = self.all.get(self.current) {
             let content = match self.search.data() {
                 Some(data) if !data.matches.is_empty() => highlighted_content(&log.content, data),
+                _ if log.source.is_loki() => loki_content(&log.content),
                 _ => log.content.lines().map(Line::raw).collect(),
             };
 
@@ -169,12 +179,57 @@ impl LogModel {
             Search::Editing(data) if !data.query.is_empty() => {
                 format!(" {} matches ", data.matches.len())
             }
-            _ if self.scroll_mode.is_following() => {
-                " [F]ollow: ON - auto-scrolling | /: search ".to_string()
+            _ => {
+                let follow = if self.scroll_mode.is_following() {
+                    "[F]ollow: ON - auto-scrolling"
+                } else {
+                    "[F]ollow: OFF - press G to resume"
+                };
+                let loki = match (self.loki_available, self.force_loki) {
+                    (false, _) => "",
+                    (true, false) => " | L: read from Loki",
+                    (true, true) => " | L: Loki forced - back to Airflow",
+                };
+                format!(" {follow} | /: search{loki} ")
             }
-            _ => " [F]ollow: OFF - press G to resume | /: search ".to_string(),
         }
     }
+}
+
+/// Style a log read from Loki: the notes flowrs adds (`──` banners, `⚠`
+/// warnings) are set apart, and the supervisor's "Task finished" event, which
+/// carries the exit code and final state, stands out.
+fn loki_content(content: &str) -> Text<'_> {
+    let t = theme();
+    content
+        .lines()
+        .map(|line| {
+            if line.starts_with("── ") {
+                Line::styled(line, Style::default().fg(t.text_muted))
+            } else if line.starts_with('⚠') {
+                Line::styled(
+                    line,
+                    Style::default()
+                        .fg(t.state_failed)
+                        .add_modifier(Modifier::BOLD),
+                )
+            } else if is_task_finished_line(line) {
+                Line::styled(
+                    line,
+                    Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
+                )
+            } else {
+                Line::raw(line)
+            }
+        })
+        .collect()
+}
+
+/// Lines rendered from the supervisor's "Task finished" event read
+/// `<timestamp> <LEVEL> Task finished key=value…`.
+fn is_task_finished_line(line: &str) -> bool {
+    line.split_whitespace().nth(2) == Some("Task")
+        && line.split_whitespace().nth(3) == Some("finished")
 }
 
 /// Build the log text with every search match highlighted and the current
@@ -285,6 +340,7 @@ mod tests {
         model.update_logs(vec![crate::airflow::model::common::Log {
             continuation_token: None,
             content: "some error line".to_string(),
+            source: crate::airflow::model::common::LogSource::Airflow,
         }]);
         model.search = Search::Editing(search_data("some error line", "error", 0));
 
@@ -311,6 +367,42 @@ mod tests {
     }
 
     #[test]
+    fn loki_logs_are_labelled_and_task_finished_stands_out() {
+        use crate::airflow::model::common::{Log, LogSource};
+        let mut model = LogModel::default();
+        model.update_logs(vec![Log {
+            continuation_token: None,
+            content: "── Log from Loki ──\nt INFO    Task finished exit_code=0".to_string(),
+            source: LogSource::Loki {
+                forced: false,
+                complete: true,
+            },
+        }]);
+        let area = Rect::new(0, 0, 60, 12);
+        let mut buffer = Buffer::empty(area);
+        (&mut model).render(area, &mut buffer);
+
+        let rows: Vec<String> = (0..area.height)
+            .map(|y| (0..area.width).map(|x| buffer[(x, y)].symbol()).collect())
+            .collect();
+        assert!(
+            rows.iter().any(|row| row.contains("Task 1 · Loki")),
+            "rows: {rows:#?}"
+        );
+        let finished_row = (0..area.height)
+            .find(|&y| {
+                let row: String = (0..area.width).map(|x| buffer[(x, y)].symbol()).collect();
+                row.contains("Task finished")
+            })
+            .expect("Task finished row");
+        let cell = (0..area.width)
+            .map(|x| &buffer[(x, finished_row)])
+            .find(|c| c.symbol() == "T")
+            .unwrap();
+        assert!(cell.style().add_modifier.contains(Modifier::BOLD));
+    }
+
+    #[test]
     fn wrapped_offset_counts_wrapped_rows() {
         let area = Rect::new(0, 0, 12, 10); // inner width 10
         let long = "x".repeat(25); // wraps to 3 rows at width 10
@@ -326,6 +418,7 @@ mod tests {
         model.update_logs(vec![crate::airflow::model::common::Log {
             continuation_token: None,
             content: format!("    {}", "x".repeat(40)),
+            source: crate::airflow::model::common::LogSource::Airflow,
         }]);
 
         let area = Rect::new(0, 0, 20, 12);

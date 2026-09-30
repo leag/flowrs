@@ -1,3 +1,4 @@
+mod convert_loki;
 mod convert_v1;
 mod convert_v2;
 mod impls;

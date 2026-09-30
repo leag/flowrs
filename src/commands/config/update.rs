@@ -120,6 +120,7 @@ mod tests {
             version: AirflowVersion::V2,
             timeout_secs: 30,
             insecure: false,
+            grafana: None,
         }
     }
 

@@ -54,6 +54,7 @@ impl AddCommand {
                     version,
                     timeout_secs: 30,
                     insecure,
+                    grafana: None,
                 }
             }
             ConfigOption::Token(_) => {
@@ -75,6 +76,7 @@ impl AddCommand {
                     version,
                     timeout_secs: 30,
                     insecure,
+                    grafana: None,
                 }
             }
             ConfigOption::Ldap => {
@@ -91,6 +93,7 @@ impl AddCommand {
                     version,
                     timeout_secs: 30,
                     insecure,
+                    grafana: None,
                 }
             }
         };

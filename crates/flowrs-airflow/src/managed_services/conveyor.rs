@@ -196,6 +196,7 @@ pub fn get_conveyor_environment_servers() -> Result<Vec<AirflowConfig>> {
                 version,
                 timeout_secs: 30,
                 insecure: false,
+                grafana: None,
             }
         })
         .collect();
