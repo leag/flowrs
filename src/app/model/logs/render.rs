@@ -197,8 +197,9 @@ impl LogModel {
 }
 
 /// Style a log read from Loki: the notes flowrs adds (`──` banners, `⚠`
-/// warnings) are set apart, and the supervisor's "Task finished" event, which
-/// carries the exit code and final state, stands out.
+/// warnings) are set apart, the job pod's output is told apart from the
+/// worker's, and the supervisor's "Task finished" event, which carries the
+/// exit code and final state, stands out.
 fn loki_content(content: &str) -> Text<'_> {
     let t = theme();
     content
@@ -218,6 +219,16 @@ fn loki_content(content: &str) -> Text<'_> {
                     line,
                     Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
                 )
+            } else if let Some(rest) = line.strip_prefix(JOB_TAG) {
+                Line::from(vec![
+                    Span::styled(JOB_TAG, Style::default().fg(t.purple)),
+                    Span::raw(rest),
+                ])
+            } else if let Some(rest) = line.strip_prefix(WORKER_TAG) {
+                Line::from(vec![
+                    Span::styled(WORKER_TAG, Style::default().fg(t.text_muted)),
+                    Span::raw(rest),
+                ])
             } else {
                 Line::raw(line)
             }
@@ -225,11 +236,19 @@ fn loki_content(content: &str) -> Text<'_> {
         .collect()
 }
 
+/// Prefixes `convert_loki` puts on lines by the role of the pod they came from.
+const WORKER_TAG: &str = "[worker] ";
+const JOB_TAG: &str = "[job]    ";
+
 /// Lines rendered from the supervisor's "Task finished" event read
-/// `<timestamp> <LEVEL> Task finished key=value…`.
+/// `[worker] <timestamp> <LEVEL> Task finished key=value…`.
 fn is_task_finished_line(line: &str) -> bool {
-    line.split_whitespace().nth(2) == Some("Task")
-        && line.split_whitespace().nth(3) == Some("finished")
+    let line = line
+        .strip_prefix(WORKER_TAG)
+        .or_else(|| line.strip_prefix(JOB_TAG))
+        .unwrap_or(line);
+    let mut words = line.split_whitespace().skip(2);
+    words.next() == Some("Task") && words.next() == Some("finished")
 }
 
 /// Build the log text with every search match highlighted and the current
@@ -372,7 +391,8 @@ mod tests {
         let mut model = LogModel::default();
         model.update_logs(vec![Log {
             continuation_token: None,
-            content: "── Log from Loki ──\nt INFO    Task finished exit_code=0".to_string(),
+            content: "── Log from Loki ──\n[worker] t INFO    Task finished exit_code=0"
+                .to_string(),
             source: LogSource::Loki {
                 forced: false,
                 complete: true,
